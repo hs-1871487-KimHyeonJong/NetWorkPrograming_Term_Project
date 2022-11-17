@@ -65,6 +65,9 @@ public class Server extends JFrame {
             } catch (IOException ex) {
                 ex.printStackTrace();
             }
+            ServerStart.setText("Chat Server Running..");
+            ServerStart.setEnabled(false);
+            PortNumber.setEnabled(false);
             Accept accept = new Accept();
             accept.start();
 
@@ -78,6 +81,7 @@ public class Server extends JFrame {
         private DataOutputStream dos;
         private Socket client_socket;
         private Vector user_vc;
+        public String UserName = "";
 
         //생성자
         public UserActivity(Socket client_socket) {
@@ -95,22 +99,123 @@ public class Server extends JFrame {
 
         @Override
         public void run() {
-            while(true){
-                Object obcm = null;
-                String msg = null;
 
-                if(socket == null)
-                    break;
-                try{
-                    obcm = ois.readObject();
-                }  catch (ClassNotFoundException | IOException e) {
-                    e.printStackTrace();
-                    return;
+            while(true) {
+                try {
+                    Object obcm = null;
+                    String msg = null;
+                    ChatMsg cm = null;
+                    if (socket == null)
+                        break;
+                    try {
+                        obcm = ois.readObject(); //Input 올때까지 대기
+                    } catch (ClassNotFoundException e) {
+                        e.printStackTrace();
+                        return;
+                    }
+                    if (obcm == null)
+                        break;
+                    if (obcm instanceof ChatMsg) {
+                        cm = (ChatMsg) obcm;
+                        AppendObject(cm);
+                    } else
+                        continue;
+
+                    if (cm.code.matches("100")) {
+                        UserName = cm.UserName;
+                        Login();
+                    } else if (cm.code.matches("200")) {
+                        msg = String.format("[%s] %s", cm.UserName, cm.data);
+                        AppendText(msg); //서버 TextField에 표기
+                        WriteAllObject(cm);
+                    } else if (cm.code.matches("300")) {
+                        UserName = cm.UserName;
+                        Logout();
+                        break;
+                    }
+
+                } catch (IOException e) {
+                    AppendText("ois.readObject() error");
+                    try {
+//						dos.close();
+//						dis.close();
+                        ois.close();
+                        oos.close();
+                        client_socket.close();
+                        Logout(); // 에러가난 현재 객체를 벡터에서 지운다
+                        break;
+                    } catch (IOException ee) {
+                        break;
+                    } // catch문 끝
                 }
+            }
+        }
 
-                if(obcm == null)
-                    break;
-                if(obcm instanceof )
+        public void Login(){
+            AppendText(UserName + "님이 입장 하였습니다.");
+        }
+        public void Logout(){
+            String msg = "[" + UserName + "]님이 퇴장 하였습니다.\n";
+            UserVec.removeElement(this);
+            WriteAll(msg); // 나를 제외한 다른 User들에게 전송
+            AppendText("사용자 " + "[" + UserName + "] 퇴장. 현재 참가자 수 " + UserVec.size());
+        }
+
+        public void WriteAll(String msg){
+            for(int i=0;i<user_vc.size();i++){
+                UserActivity user = (UserActivity) user_vc.elementAt(i);
+                user.WriteOne(msg);
+            }
+        }
+
+        public void WriteOne(String msg){
+            try {
+                ChatMsg obcm = new ChatMsg("SERVER", "200", msg);
+                oos.writeObject(obcm);
+
+            } catch (IOException e) {
+                AppendText("dos.writeObject() error");
+                try {
+//					dos.close();
+//					dis.close();
+                    ois.close();
+                    oos.close();
+                    client_socket.close();
+                    client_socket = null;
+                    ois = null;
+                    oos = null;
+                } catch (IOException e1) {
+                    // TODO Auto-generated catch block
+                    e1.printStackTrace();
+                }
+                Logout();
+            }
+        }
+
+        public void WriteAllObject(Object ob){ //전체 메시지 전송
+            for(int i=0;i<user_vc.size();i++){
+                UserActivity user = (UserActivity) user_vc.elementAt(i);
+                user.WriteOneObject(ob);
+            }
+        }
+
+        public void WriteOneObject(Object ob){
+            try{
+                oos.writeObject(ob);
+            } catch (IOException e) {
+                AppendText("oos.writeObject(ob) error");
+                try {
+                    ois.close();
+                    oos.close();
+                    client_socket.close();
+                    client_socket = null;
+                    ois = null;
+                    oos = null;
+                } catch (IOException e1) {
+                    // TODO Auto-generated catch block
+                    e1.printStackTrace();
+                }
+                Logout();
             }
         }
     }
@@ -127,9 +232,8 @@ public class Server extends JFrame {
                     UserVec.add(user); // 연결된 User 배열
                     user.start();
                     AppendText("현재 참가자 수 " + UserVec.size());
-
                 } catch (IOException e) {
-
+                    AppendText("Accept() error");
                 }
             }
         }
@@ -138,6 +242,13 @@ public class Server extends JFrame {
     public void AppendText(String str){
         textArea.append(str + "\n");
         textArea.setCaretPosition(textArea.getText().length());//스크롤을 맨 아래로 내린다.
+    }
+
+    public void AppendObject(ChatMsg msg) {
+        textArea.append("code = " + msg.code + "\n");
+        textArea.append("id = " + msg.UserName + "\n");
+        textArea.append("data = " + msg.data + "\n");
+        textArea.setCaretPosition(textArea.getText().length());
     }
 
 }
